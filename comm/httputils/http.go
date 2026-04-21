@@ -77,16 +77,16 @@ func RawPost(url string, data []byte, contentType string) (*http.Response, []byt
 		return nil, nil, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return resp, nil, fmt.Errorf("http code: %d", resp.StatusCode)
-	}
-
 	result, _ := ioutil.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		log.Errorf("[post]http status: %d, resp: %s", resp.StatusCode, result)
+		return resp, result, fmt.Errorf("http code: %d", resp.StatusCode)
+	}
 	if len(resp.Header["Content-Type"]) > 0 &&
 		strings.Contains(strings.ToLower(resp.Header["Content-Type"][0]), "application/json") {
-		log.Debugf("[get]http resp: %s", result)
+		log.Debugf("[post]http resp: %s", result)
 	} else {
-		log.Debugf("[get]http resp Content-Type: %v", resp.Header["Content-Type"])
+		log.Debugf("[post]http resp Content-Type: %v", resp.Header["Content-Type"])
 	}
 	return resp, result, nil
 }
@@ -112,10 +112,11 @@ func RawGet(url string) (*http.Response, []byte, error) {
 		return nil, nil, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return resp, nil, fmt.Errorf("http code: %d", resp.StatusCode)
-	}
 	result, _ := ioutil.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		log.Errorf("[get]http status: %d, resp: %s", resp.StatusCode, result)
+		return resp, result, fmt.Errorf("http code: %d", resp.StatusCode)
+	}
 	if len(resp.Header["Content-Type"]) > 0 &&
 		strings.Contains(strings.ToLower(resp.Header["Content-Type"][0]), "application/json") {
 		log.Debugf("[get]http resp: %s", result)
