@@ -63,14 +63,8 @@ func GetAuthorizerWxApiUrl(appid string, path string, query string) (string, err
 		log.Error(err)
 		return "", err
 	}
-	var protocol string
-	if config.WxApiConf.UseHttps {
-		protocol = "https"
-	} else {
-		protocol = "http"
-	}
-	return fmt.Sprintf("%s://api.weixin.qq.com%s?access_token=%s%s",
-		protocol, path, token, query), nil
+	return fmt.Sprintf("https://api.weixin.qq.com%s?access_token=%s%s",
+		path, token, query), nil
 }
 
 // GetRawWxApiUrl 拼接微信开放平台的url，不带微信令牌
@@ -78,13 +72,7 @@ func GetRawWxApiUrl(path string, query string) string {
 	if len(query) > 0 {
 		query = "?" + query
 	}
-	var protocol string
-	if config.WxApiConf.UseHttps {
-		protocol = "https"
-	} else {
-		protocol = "http"
-	}
-	return fmt.Sprintf("%s://api.weixin.qq.com%s%s", protocol, path, query)
+	return fmt.Sprintf("https://api.weixin.qq.com%s%s", path, query)
 }
 
 // postWxJson 向微信开放平台发起post请求 解析结构体中的wx标签
