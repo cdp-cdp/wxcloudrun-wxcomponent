@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/WeixinCloud/wxcloudrun-wxcomponent/comm/errno"
-
 	"github.com/gin-gonic/gin"
 )
 
