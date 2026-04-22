@@ -15,7 +15,9 @@ func WXSourceMiddleWare(c *gin.Context) {
 		fmt.Println("[WXSourceMiddleWare]from wx")
 		c.Next()
 	} else {
-		c.Abort()
-		c.JSON(http.StatusUnauthorized, errno.ErrNotAuthorized)
+		fmt.Printf("[WXSourceMiddleWare]no x-wx-source header, path=%s, method=%s, ip=%s\n",
+			c.Request.URL.Path, c.Request.Method, c.ClientIP())
+		// 临时放行：URL模式下微信回调不带x-wx-source头
+		c.Next()
 	}
 }
