@@ -24,11 +24,14 @@ type wxCallbackComponentRecord struct {
 func componentHandler(c *gin.Context) {
 	// 记录到数据库
 	body, _ := ioutil.ReadAll(c.Request.Body)
+	log.Infof("[callback-component] received callback, body=%s", string(body))
 	var json wxCallbackComponentRecord
 	if err := binding.JSON.BindBody(body, &json); err != nil {
+		log.Errorf("[callback-component] bind json err: %v", err)
 		c.JSON(http.StatusOK, errno.ErrInvalidParam.WithData(err.Error()))
 		return
 	}
+	log.Infof("[callback-component] infoType=%s, createTime=%d", json.InfoType, json.CreateTime)
 	r := model.WxCallbackComponentRecord{
 		CreateTime:  time.Unix(json.CreateTime, 0),
 		ReceiveTime: time.Now(),
@@ -39,9 +42,11 @@ func componentHandler(c *gin.Context) {
 		r.CreateTime = time.Unix(1, 0)
 	}
 	if err := dao.AddComponentCallBackRecord(&r); err != nil {
+		log.Errorf("[callback-component] db insert err: %v", err)
 		c.JSON(http.StatusOK, errno.ErrSystemError.WithData(err.Error()))
 		return
 	}
+	log.Infof("[callback-component] saved to db, processing infoType=%s", json.InfoType)
 
 	// 处理授权相关的消息
 	var err error
@@ -54,9 +59,11 @@ func componentHandler(c *gin.Context) {
 		err = newAuthHander(&body)
 	case "unauthorized":
 		err = unAuthHander(&body)
+	default:
+		log.Infof("[callback-component] unhandled infoType=%s", json.InfoType)
 	}
 	if err != nil {
-		log.Error(err)
+		log.Errorf("[callback-component] handler error for infoType=%s: %v", json.InfoType, err)
 		c.JSON(http.StatusOK, errno.ErrSystemError.WithData(err.Error()))
 		return
 	}
@@ -81,12 +88,15 @@ type ticketRecord struct {
 func ticketHandler(body *[]byte) error {
 	var record ticketRecord
 	if err := binding.JSON.BindBody(*body, &record); err != nil {
+		log.Errorf("[callback-ticket] bind err: %v", err)
 		return err
 	}
-	log.Info("[new ticket]" + record.ComponentVerifyTicket)
+	log.Infof("[callback-ticket] received ticket=%s", record.ComponentVerifyTicket)
 	if err := wxbase.SetTicket(record.ComponentVerifyTicket); err != nil {
+		log.Errorf("[callback-ticket] save ticket err: %v", err)
 		return err
 	}
+	log.Info("[callback-ticket] ticket saved successfully")
 	return nil
 }
 
@@ -103,14 +113,27 @@ func newAuthHander(body *[]byte) error {
 	var refreshtoken string
 	var appinfo wx.AuthorizerInfoResp
 	if err = binding.JSON.BindBody(*body, &record); err != nil {
+		log.Errorf("[callback-auth] bind err: %v", err)
 		return err
 	}
+	log.Infof("[callback-auth] received auth event, authorizerAppid=%s, authCode=%s, expiredTime=%d",
+		record.AuthorizerAppid, record.AuthorizationCode, record.AuthorizationCodeExpiredTime)
+
+	log.Infof("[callback-auth] calling queryAuth with authCode=%s", record.AuthorizationCode)
 	if refreshtoken, err = queryAuth(record.AuthorizationCode); err != nil {
+		log.Errorf("[callback-auth] queryAuth failed: %v", err)
 		return err
 	}
+	log.Infof("[callback-auth] queryAuth success, refreshToken=%s", refreshtoken)
+
+	log.Infof("[callback-auth] calling GetAuthorizerInfo for appid=%s", record.AuthorizerAppid)
 	if err = wx.GetAuthorizerInfo(record.AuthorizerAppid, &appinfo); err != nil {
+		log.Errorf("[callback-auth] GetAuthorizerInfo failed for appid=%s: %v", record.AuthorizerAppid, err)
 		return err
 	}
+	log.Infof("[callback-auth] GetAuthorizerInfo success, nickname=%s, apptype=%d, funcinfo=%s",
+		appinfo.AuthorizerInfo.NickName, appinfo.AuthorizerInfo.AppType, appinfo.AuthorizationInfo.StrFuncInfo)
+
 	if err = dao.CreateOrUpdateAuthorizerRecord(&model.Authorizer{
 		Appid:         record.AuthorizerAppid,
 		AppType:       appinfo.AuthorizerInfo.AppType,
@@ -125,8 +148,11 @@ func newAuthHander(body *[]byte) error {
 		VerifyInfo:    appinfo.AuthorizerInfo.VerifyInfo.Id,
 		AuthTime:      time.Unix(record.CreateTime, 0),
 	}); err != nil {
+		log.Errorf("[callback-auth] save to db failed for appid=%s: %v", record.AuthorizerAppid, err)
 		return err
 	}
+	log.Infof("[callback-auth] authorizer record saved to db, appid=%s, nickname=%s",
+		record.AuthorizerAppid, appinfo.AuthorizerInfo.NickName)
 	return nil
 }
 
@@ -147,15 +173,20 @@ func queryAuth(authCode string) (string, error) {
 		ComponentAppid:    wxbase.GetAppid(),
 		AuthorizationCode: authCode,
 	}
+	log.Infof("[queryAuth] calling /cgi-bin/component/api_query_auth, componentAppid=%s, authCode=%s",
+		wxbase.GetAppid(), authCode)
 	var resp queryAuthResp
 	_, body, err := wx.PostWxJsonWithComponentToken("/cgi-bin/component/api_query_auth", "", req)
 	if err != nil {
+		log.Errorf("[queryAuth] wx api error: %v", err)
 		return "", err
 	}
+	log.Infof("[queryAuth] wx api response: %s", string(body))
 	if err := wx.WxJson.Unmarshal(body, &resp); err != nil {
-		log.Errorf("Unmarshal err, %v", err)
+		log.Errorf("[queryAuth] unmarshal err: %v", err)
 		return "", err
 	}
+	log.Infof("[queryAuth] success, refreshToken=%s", resp.AuthorizationInfo.AuthorizerRefreshToken)
 	return resp.AuthorizationInfo.AuthorizerRefreshToken, nil
 }
 
@@ -168,12 +199,14 @@ func unAuthHander(body *[]byte) error {
 	var record unAuthRecord
 	var err error
 	if err = binding.JSON.BindBody(*body, &record); err != nil {
-		log.Errorf("bind err %v", err)
+		log.Errorf("[callback-unauth] bind err: %v", err)
 		return err
 	}
+	log.Infof("[callback-unauth] received unauthorized event, authorizerAppid=%s", record.AuthorizerAppid)
 	if err := dao.DelAuthorizerRecord(record.AuthorizerAppid); err != nil {
-		log.Errorf("DelAuthorizerRecord err %v", err)
+		log.Errorf("[callback-unauth] delete record failed for appid=%s: %v", record.AuthorizerAppid, err)
 		return err
 	}
+	log.Infof("[callback-unauth] record deleted for appid=%s", record.AuthorizerAppid)
 	return nil
 }

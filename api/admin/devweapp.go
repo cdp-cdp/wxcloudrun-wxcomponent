@@ -276,11 +276,19 @@ func getDevWeAppListHandler(c *gin.Context) {
 		return
 	}
 	appid := c.DefaultQuery("appid", "")
+	log.Infof("[dev-weapp-list] query params: offset=%d, limit=%d, appid=%s", offset, count, appid)
 
 	// 获取账号列表
 	records, total, err := dao.GetDevWeAppRecords(offset, count, appid)
 	if err != nil {
+		log.Errorf("[dev-weapp-list] db query error: %v", err)
 		c.JSON(http.StatusOK, errno.ErrSystemError.WithData(err.Error()))
+		return
+	}
+	log.Infof("[dev-weapp-list] db result: total=%d, records_count=%d", total, len(records))
+	if len(records) == 0 {
+		log.Info("[dev-weapp-list] no records in db (apptype=0 AND funcinfo LIKE '%%18%%'), skip wx api calls")
+		c.JSON(http.StatusOK, errno.OK.WithData(gin.H{"total": total, "records": []getDevWeAppListResp{}}))
 		return
 	}
 
@@ -304,19 +312,24 @@ func getDevWeAppListHandler(c *gin.Context) {
 				}
 			}
 			// 获取服务状态
+			log.Infof("[dev-weapp-list] calling getVisitStatus for appid=%s", record.Appid)
 			status, err := getVisitStatus(record.Appid)
 			if err != nil {
-				log.Error(err)
+				log.Errorf("[dev-weapp-list] getVisitStatus fail for appid=%s: %v", record.Appid, err)
 			} else {
+				log.Infof("[dev-weapp-list] getVisitStatus success for appid=%s, status=%d", record.Appid, status)
 				resp[i].ServiceStatus = status
 			}
 
 			// 获取版本信息
+			log.Infof("[dev-weapp-list] calling getVersionInfo for appid=%s", record.Appid)
 			var versionInfo getVersionInfoResp
 			err = getVersionInfo(record.Appid, &versionInfo)
 			if err != nil {
-				log.Error(err)
+				log.Errorf("[dev-weapp-list] getVersionInfo fail for appid=%s: %v", record.Appid, err)
 			} else {
+				log.Infof("[dev-weapp-list] getVersionInfo success for appid=%s, hasRelease=%v, hasExp=%v",
+					record.Appid, versionInfo.ReleaseInfo != nil, versionInfo.ExpInfo != nil)
 				resp[i].ReleaseInfo = versionInfo.ReleaseInfo
 				resp[i].ExpInfo = versionInfo.ExpInfo
 			}
